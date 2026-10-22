@@ -26,6 +26,7 @@ Settings live in `%APPDATA%\pooi.moe\QuickLook\QuickLook.Plugin.FilePilot.config
 | `FolderPreview` | `FilePilot` | `QuickLook` previews folders in QuickLook too. |
 | `FollowCursor` | `True` | `False` keeps showing the same file when the cursor moves. |
 | `CopyAsPathHotkey` | `Ctrl+Shift+C` | Set this if you rebound *Copy as path* in File Pilot. |
+| `ToggleCursorSelectionHotkey` | `Ctrl+Space` | Set this if you rebound *Toggle cursor selection* in File Pilot. |
 | `Debug` | `False` | `True` logs each decision to `%APPDATA%\pooi.moe\QuickLook\QuickLook.Exception.log`. |
 
 ## How it works
@@ -34,13 +35,13 @@ File Pilot can't run an external tool from a hotkey, and QuickLook only knows ho
 
 1. It starts from the plugin's `Init()` and never previews anything itself (`CanHandle` always returns false), the same shape as QuickLook's official WoW64HookHelper plugin.
 2. It watches which window is in front. Only while File Pilot is, it installs a low-level keyboard and mouse hook to catch Space and cursor movement.
-3. It reads the selected item by sending File Pilot's *Copy as path* hotkey, then restores your previous clipboard contents (unless another app changed the clipboard in the meantime). The round trip takes about 50–90 ms, short enough that Win+V clipboard history doesn't record the path.
+3. It reads the selected item by sending File Pilot's *Copy as path* hotkey. When nothing is selected, *Copy as path* returns the current folder instead, so in that case the plugin briefly toggles the cursor item's selection to read it, then toggles it back. Afterwards it restores your previous clipboard contents (unless another app changed the clipboard in the meantime). The round trip takes about 50–90 ms, short enough that Win+V clipboard history doesn't record the path.
 4. For a file, it opens the preview through QuickLook's named pipe, the same channel `QuickLook.exe <path>` uses. For a folder, it passes the Space through to File Pilot.
 
 ## Caveats
 
 - **Text-box detection is a heuristic.** File Pilot draws its own UI and exposes no caret or accessibility information, so the plugin guesses from your keys, based on File Pilot's default bindings: letters, F2, Ctrl+F, `/` and similar keys mean you're typing; Enter, Esc, Up/Down or a click mean you're back in the list. If Space ever previews when you meant to type a space, press Esc and try again.
-- **It relies on *Copy as path*.** If you remove or rebind that hotkey in File Pilot, update `CopyAsPathHotkey`.
+- **It relies on two File Pilot hotkeys:** *Copy as path* and *Toggle cursor selection*. If you remove or rebind either, update the matching setting.
 
 ## Building
 
