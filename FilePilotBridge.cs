@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -41,7 +42,7 @@ internal static class FilePilotBridge
     private static WinEventProc _foregroundProc;
     private static LowLevelProc _keyProc, _mouseProc; // kept referenced so the GC can't collect them
     private static IntPtr _keyHook, _mouseHook;
-    private static uint _filePilotPid;
+    private static readonly Dictionary<uint, bool> FilePilotPids = new(); // pid -> is File Pilot
     private static bool _spaceSwallowed; // we ate a Space keydown, so eat its keyup too
     private static bool _textMode;       // File Pilot is probably in a text box
 
@@ -109,11 +110,8 @@ internal static class FilePilotBridge
 
     private static void UpdateHooks(IntPtr foreground)
     {
-        GetWindowThreadProcessId(foreground, out var pid);
-
-        if (pid != 0 && IsFilePilot(pid))
+        if (IsFilePilotWindow(foreground))
         {
-            _filePilotPid = pid;
             if (_keyHook != IntPtr.Zero)
                 return;
 
@@ -152,9 +150,16 @@ internal static class FilePilotBridge
                         return (IntPtr)1;
                     }
                 }
-                else if (FilePilotIsForeground() && OnKeyDown(key))
+                else if (IsFilePilotWindow(GetForegroundWindow()))
                 {
-                    return (IntPtr)1;
+                    if (key == Keys.Space && Settings.Debug)
+                    {
+                        string state = $"text={_textMode} preview={_previewOpen} busy={_busy} swallowed={_spaceSwallowed}";
+                        Work.Add(() => Log("space down: " + state));
+                    }
+
+                    if (OnKeyDown(key))
+                        return (IntPtr)1;
                 }
             }
         }
@@ -170,7 +175,7 @@ internal static class FilePilotBridge
             if (message is WM_LBUTTONDOWN or WM_RBUTTONDOWN)
             {
                 _textMode = false;
-                if (_previewOpen && message == WM_LBUTTONDOWN && FilePilotIsForeground())
+                if (_previewOpen && message == WM_LBUTTONDOWN && IsFilePilotWindow(GetForegroundWindow()))
                     QueueFollowCursor(80); // a click can move the cursor too
             }
         }
@@ -347,7 +352,30 @@ internal static class FilePilotBridge
 
     // ---------------- helpers ----------------
 
-    private static bool IsFilePilot(uint pid)
+    /// <summary>
+    /// Whether a window belongs to File Pilot. Checked by executable name rather than by remembering one
+    /// process: launching FPilot.exe again briefly starts a second process that hands off and exits.
+    /// </summary>
+    private static bool IsFilePilotWindow(IntPtr hwnd)
+    {
+        GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == 0)
+            return false;
+
+        lock (FilePilotPids)
+        {
+            if (!FilePilotPids.TryGetValue(pid, out var isFilePilot))
+            {
+                if (FilePilotPids.Count > 256)
+                    FilePilotPids.Clear(); // process IDs get reused; don't let stale entries pile up
+                FilePilotPids[pid] = isFilePilot = IsFilePilotProcess(pid);
+            }
+
+            return isFilePilot;
+        }
+    }
+
+    private static bool IsFilePilotProcess(uint pid)
     {
         var process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
         if (process == IntPtr.Zero)
@@ -363,12 +391,6 @@ internal static class FilePilotBridge
         {
             CloseHandle(process);
         }
-    }
-
-    private static bool FilePilotIsForeground()
-    {
-        GetWindowThreadProcessId(GetForegroundWindow(), out var pid);
-        return pid == _filePilotPid;
     }
 
     private static bool Pressed(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
