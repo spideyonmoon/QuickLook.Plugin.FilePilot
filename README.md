@@ -1,5 +1,7 @@
 # fpilot-quicklook
 
+> **Archived, no longer maintained.** This is the original standalone version. A later attempt to rebuild it as a QuickLook plugin (tag [`1.0.0`](https://github.com/spideyonmoon/fpilot-quicklook/releases/tag/1.0.0)) was slower in practice and was abandoned; its code is still in the commit history. For an alternative, see the AutoHotkey script on the [QuickLook wiki](https://github.com/QL-Win/QuickLook/wiki/File-Pilot).
+
 Use [QuickLook](https://github.com/QL-Win/QuickLook) for Space previews in [File Pilot](https://filepilot.tech), the way it works in Explorer.
 
 - **Space on a file**: opens it in QuickLook. Space again, or Esc, closes it.
