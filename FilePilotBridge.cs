@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -34,7 +35,7 @@ internal static class FilePilotBridge
     // a low-level hook that doesn't return quickly stalls all input and gets removed by Windows.
     private static readonly BlockingCollection<Action> Work = new();
 
-    private static Thread _hookThread;
+    private static EventWaitHandle _instanceGuard;
 
     // Hook-thread state.
     private static WinEventProc _foregroundProc;
@@ -53,8 +54,18 @@ internal static class FilePilotBridge
 
     public static void Start()
     {
-        if (_hookThread != null)
+        // QuickLook may initialise plugins concurrently, so a plain static check isn't enough:
+        // two bridges would each toggle the preview and cancel each other out.
+        // A named handle scoped to this process lets exactly one start.
+        var name = $@"Local\QuickLook.Plugin.FilePilot.{Process.GetCurrentProcess().Id}";
+        var guard = new EventWaitHandle(false, EventResetMode.ManualReset, name, out var created);
+        if (!created)
+        {
+            guard.Dispose();
             return;
+        }
+
+        _instanceGuard = guard; // keep it alive for the life of the process
 
         var worker = new Thread(() =>
         {
@@ -73,8 +84,7 @@ internal static class FilePilotBridge
         worker.SetApartmentState(ApartmentState.STA); // required by the clipboard
         worker.Start();
 
-        _hookThread = new Thread(HookThreadMain) { IsBackground = true, Name = "FilePilot hooks" };
-        _hookThread.Start();
+        new Thread(HookThreadMain) { IsBackground = true, Name = "FilePilot hooks" }.Start();
     }
 
     // ---------------- hook thread ----------------
