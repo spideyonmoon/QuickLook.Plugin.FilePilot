@@ -28,7 +28,7 @@ jobs:
         run: ./Scripts/update-version.ps1
 
       - name: Build
-        run: dotnet build QuickLook.Plugin.FilePilot.csproj -c Release
+        run: dotnet build QuickLook.Plugin.FilePilot.sln -c Release
 
       - name: Pack .qlplugin
         shell: pwsh
