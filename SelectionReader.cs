@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using static QuickLook.Plugin.FilePilot.NativeMethods;
@@ -141,7 +142,7 @@ internal static class Input
             .Concat(chord.Reverse().Select(k => Key(k, true, marker)))
             .ToArray();
 
-        SendInput((uint)inputs.Length, inputs, System.Runtime.InteropServices.Marshal.SizeOf<INPUT>());
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
     }
 
     private static INPUT Key(Keys key, bool up, IntPtr marker) => new()
