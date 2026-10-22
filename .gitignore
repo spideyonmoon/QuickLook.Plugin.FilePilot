@@ -1,2 +1,7 @@
-*.exe
-*.log
+bin/
+obj/
+Build/
+*.qlplugin
+*.zip
+Properties/GitVersion.cs
+QuickLook.Plugin.Metadata.config
