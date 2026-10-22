@@ -336,12 +336,31 @@ internal static class FilePilotBridge
         if (!QuickLookViewer.IsOpen() && DateTime.UtcNow - _openedAt > OpenGracePeriod)
         {
             _previewOpen = false; // closed from QuickLook's side
+            Log("follow: preview was closed in QuickLook");
             return;
         }
 
-        var path = SelectionReader.Read(Settings.CopyAsPathKeys, InjectedMarker);
+        // File Pilot may not have moved its cursor yet (e.g. while QuickLook is busy loading a
+        // preview), so if the selection looks unchanged, give it a moment and look again.
+        string path = null;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (attempt > 0)
+                Thread.Sleep(delayMs * 2);
+            if (generation != Volatile.Read(ref _followGeneration) || !_previewOpen || _busy)
+                return;
+
+            path = SelectionReader.Read(Settings.CopyAsPathKeys, InjectedMarker);
+            if (path != null && path != _lastPreviewPath)
+                break;
+        }
+
         if (path == null || path == _lastPreviewPath)
+        {
+            Log("follow: selection unchanged");
             return;
+        }
+
         if (Directory.Exists(path) && !Settings.FoldersInQuickLook)
             return; // keep showing the last file
 
