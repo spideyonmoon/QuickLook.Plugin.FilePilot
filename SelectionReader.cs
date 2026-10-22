@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -66,11 +67,15 @@ internal static class SelectionReader
             var started = DateTime.UtcNow;
             Input.Press(marker, Settings.CopyAsPathKeys);
 
-            if (!WaitForChange(before, TimeSpan.FromMilliseconds(300)))
+            // File Pilot normally copies within ~50 ms, so a short first wait keeps a missed copy cheap.
+            var timeout = attempt == 1 ? 150 : 300;
+            if (!WaitForChange(before, TimeSpan.FromMilliseconds(timeout)))
             {
-                log($"copy attempt {attempt}: clipboard unchanged after 300 ms");
+                log($"copy attempt {attempt}: clipboard unchanged after {timeout} ms");
                 continue;
             }
+
+            var copiedMs = (DateTime.UtcNow - started).TotalMilliseconds;
 
             var text = ReadText();
             ours = GetClipboardSequenceNumber();
@@ -78,7 +83,10 @@ internal static class SelectionReader
             var first = text?.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
                 .FirstOrDefault()?.Trim().Trim('"');
             if (first != null && (File.Exists(first) || Directory.Exists(first)))
+            {
+                log($"copy attempt {attempt}: copied in {copiedMs:0} ms");
                 return first;
+            }
 
             log($"copy attempt {attempt}: unusable text '{text}' after {(DateTime.UtcNow - started).TotalMilliseconds:0} ms");
             return null; // File Pilot did copy, just not a file system path (e.g. a virtual folder)
@@ -180,14 +188,38 @@ internal static class SelectionReader
 
 internal static class Input
 {
-    /// <summary>Presses a key chord (all keys down in order, then up in reverse), tagged with <paramref name="marker"/>.</summary>
+    /// <summary>
+    /// Presses a key chord, tagged with <paramref name="marker"/>: modifiers down, the key down and up,
+    /// modifiers up. Each step is held briefly, like a real keypress: File Pilot can miss a chord whose
+    /// keys all go down and up within the same instant.
+    /// </summary>
     public static void Press(IntPtr marker, params Keys[] chord)
     {
-        var inputs = chord.Select(k => Key(k, false, marker))
-            .Concat(chord.Reverse().Select(k => Key(k, true, marker)))
-            .ToArray();
+        const int holdMs = 10;
+        var modifiers = chord.Take(chord.Length - 1).ToArray();
+        var key = chord[chord.Length - 1];
 
-        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        if (modifiers.Length > 0)
+        {
+            Send(modifiers.Select(k => Key(k, false, marker)));
+            Thread.Sleep(holdMs);
+        }
+
+        Send([Key(key, false, marker)]);
+        Thread.Sleep(holdMs);
+        Send([Key(key, true, marker)]);
+
+        if (modifiers.Length > 0)
+        {
+            Thread.Sleep(holdMs);
+            Send(modifiers.Reverse().Select(k => Key(k, true, marker)));
+        }
+    }
+
+    private static void Send(IEnumerable<INPUT> inputs)
+    {
+        var array = inputs.ToArray();
+        SendInput((uint)array.Length, array, Marshal.SizeOf<INPUT>());
     }
 
     private static INPUT Key(Keys key, bool up, IntPtr marker) => new()
