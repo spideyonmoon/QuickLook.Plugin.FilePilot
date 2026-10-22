@@ -1,41 +1,59 @@
-# fpilot-quicklook
+# QuickLook.Plugin.FilePilot
 
-Use [QuickLook](https://github.com/QL-Win/QuickLook) for Space previews in [File Pilot](https://filepilot.tech), the way it works in Explorer.
+A [QuickLook](https://github.com/QL-Win/QuickLook) plugin that makes Space in [File Pilot](https://filepilot.tech) preview files in QuickLook, the way it works in Explorer.
 
 - **Space on a file**: opens it in QuickLook. Space again, or Esc, closes it.
-- **Space on a folder**: File Pilot's own folder inspector, as usual.
+- **Space on a folder**: File Pilot's own folder inspector, as usual (configurable).
 - **While a preview is open**: moving the cursor (arrows, `J`/`K`, Home/End, PageUp/PageDown, clicking) switches the preview to the file under the cursor. Enter or Backspace closes it.
 - **Typing in a File Pilot text box** (filter, rename, path bar): Space types a space as normal.
 
-It only acts while File Pilot is the active window. Everywhere else, your keyboard is untouched.
+It runs inside QuickLook, so there's no extra program to start, and it only listens to the keyboard while File Pilot is the active window.
 
 ## Install
 
-Requirements: Windows 10/11, File Pilot, and QuickLook running in the background.
+1. Download `QuickLook.Plugin.FilePilot.qlplugin` from [Releases](https://github.com/spideyonmoon/fpilot-quicklook/releases).
+2. Select it in Explorer and press Space to open it in QuickLook, then click **Install**.
+3. Restart QuickLook.
 
-1. Build it. No SDK needed; this uses the C# compiler that ships with Windows:
-   ```bat
-   build.cmd
-   ```
-2. Run `FPilotQuickLook.exe`. It has no window and sits in the background.
-3. To start it with Windows, put a shortcut to it in `shell:startup`.
+To uninstall, delete `%APPDATA%\pooi.moe\QuickLook\QuickLook.Plugin\QuickLook.Plugin.FilePilot` and restart QuickLook.
 
-To stop it, end `FPilotQuickLook.exe` in Task Manager and remove the Startup shortcut.
+## Settings
+
+Settings live in `%APPDATA%\pooi.moe\QuickLook\QuickLook.Plugin.FilePilot.config`, which is created the first time the plugin loads. Restart QuickLook after editing it.
+
+| Setting | Default | |
+|---|---|---|
+| `FolderPreview` | `FilePilot` | `QuickLook` previews folders in QuickLook too. |
+| `FollowCursor` | `True` | `False` keeps showing the same file when the cursor moves. |
+| `CopyAsPathHotkey` | `Ctrl+Shift+C` | Set this if you rebound *Copy as path* in File Pilot. |
+| `Debug` | `False` | `True` logs each decision to `%APPDATA%\pooi.moe\QuickLook\QuickLook.Exception.log`. |
 
 ## How it works
 
-File Pilot can't launch external tools from a hotkey, and QuickLook only knows how to read Explorer's selection. So this is a small bridge between the two:
+File Pilot can't run an external tool from a hotkey, and QuickLook only knows how to read the selection in Explorer and a few other file managers. So the plugin bridges the two:
 
-1. A low-level keyboard hook catches Space while File Pilot is in the foreground.
-2. It reads the selected item by sending File Pilot's *Copy as path* hotkey (`Ctrl+Shift+C`), then puts your previous clipboard contents back. The whole round trip takes about 50–90 ms. The path is replaced quickly enough that it doesn't show up in Win+V clipboard history.
-3. For a file, it tells QuickLook to open it through QuickLook's named pipe (the same one `QuickLook.exe <path>` uses). For a folder, it passes the Space through to File Pilot.
+1. It starts from the plugin's `Init()` and never previews anything itself (`CanHandle` always returns false), the same shape as QuickLook's official WoW64HookHelper plugin.
+2. It watches which window is in front. Only while File Pilot is, it installs a low-level keyboard and mouse hook to catch Space and cursor movement.
+3. It reads the selected item by sending File Pilot's *Copy as path* hotkey, then restores your previous clipboard contents (unless another app changed the clipboard in the meantime). The round trip takes about 50–90 ms, short enough that Win+V clipboard history doesn't record the path.
+4. For a file, it opens the preview through QuickLook's named pipe, the same channel `QuickLook.exe <path>` uses. For a folder, it passes the Space through to File Pilot.
 
 ## Caveats
 
-- **Text-box detection is a heuristic.** File Pilot draws its own UI, so there's no reliable way to tell when a text box has focus. The tool guesses from your recent keys: letters, F2, Ctrl+F, `/` and similar keys mean you're typing; Enter, Esc, arrows or a click mean you're back in the list. If Space ever previews when you meant to type a space, press Esc and try again.
-- **It assumes File Pilot's default `Ctrl+Shift+C` (Copy as path) binding.** If you rebound it, change `SendChord(...)` in `GetSelectedPath`.
-- **Memory:** about 25 MB, mostly the .NET Framework runtime. A native C rewrite could cut that to roughly 1–2 MB.
+- **Text-box detection is a heuristic.** File Pilot draws its own UI and exposes no caret or accessibility information, so the plugin guesses from your keys, based on File Pilot's default bindings: letters, F2, Ctrl+F, `/` and similar keys mean you're typing; Enter, Esc, Up/Down or a click mean you're back in the list. If Space ever previews when you meant to type a space, press Esc and try again.
+- **It relies on *Copy as path*.** If you remove or rebind that hotkey in File Pilot, update `CopyAsPathHotkey`.
 
-## Debugging
+## Building
 
-Run `FPilotQuickLook.exe --log` to write each preview decision (which path it read, and the timings) to `%TEMP%\FPilotQuickLook.log`.
+GitHub Actions builds every push and attaches the `.qlplugin` to tagged releases. To build locally you need the .NET SDK (8 or newer):
+
+```bat
+git clone --recursive https://github.com/spideyonmoon/fpilot-quicklook
+cd fpilot-quicklook
+powershell -File Scripts\update-version.ps1
+dotnet build QuickLook.Plugin.FilePilot.sln -c Release
+powershell -File Scripts\pack-zip.ps1
+```
+
+## See also
+
+- [QuickLook wiki: File Pilot](https://github.com/QL-Win/QuickLook/wiki/File-Pilot), an AutoHotkey script that takes the same approach.
