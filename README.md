@@ -11,7 +11,7 @@ It runs inside QuickLook, so there's no extra program to start, and it only list
 
 ## Install
 
-1. Download `QuickLook.Plugin.FilePilot.qlplugin` from [Releases](https://github.com/spideyonmoon/fpilot-quicklook/releases).
+1. Download `QuickLook.Plugin.FilePilot.qlplugin` from [Releases](https://github.com/spideyonmoon/QuickLook.Plugin.FilePilot/releases).
 2. Select it in Explorer and press Space to open it in QuickLook, then click **Install**.
 3. Restart QuickLook.
 
@@ -47,8 +47,8 @@ File Pilot can't run an external tool from a hotkey, and QuickLook only knows ho
 GitHub Actions builds every push and attaches the `.qlplugin` to tagged releases. To build locally you need the .NET SDK (8 or newer):
 
 ```bat
-git clone --recursive https://github.com/spideyonmoon/fpilot-quicklook
-cd fpilot-quicklook
+git clone --recursive https://github.com/spideyonmoon/QuickLook.Plugin.FilePilot
+cd QuickLook.Plugin.FilePilot
 powershell -File Scripts\update-version.ps1
 dotnet build QuickLook.Plugin.FilePilot.sln -c Release
 powershell -File Scripts\pack-zip.ps1
