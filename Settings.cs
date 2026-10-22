@@ -22,10 +22,18 @@ internal static class Settings
     /// <summary>The File Pilot hotkey bound to "Copy as path", used to read the selection.</summary>
     public static Keys[] CopyAsPathKeys { get; private set; } = DefaultCopyAsPath;
 
+    /// <summary>
+    /// The File Pilot hotkey bound to "Toggle cursor selection". "Copy as path" copies the current
+    /// folder when nothing is selected, so this is used to select the item under the cursor instead.
+    /// </summary>
+    public static Keys[] ToggleCursorSelectionKeys { get; private set; } = DefaultToggleCursorSelection;
+
     /// <summary>Writes each preview decision to QuickLook's log.</summary>
     public static bool Debug { get; private set; }
 
     private static Keys[] DefaultCopyAsPath => [Keys.ControlKey, Keys.ShiftKey, Keys.C];
+
+    private static Keys[] DefaultToggleCursorSelection => [Keys.ControlKey, Keys.Space];
 
     public static void Load()
     {
@@ -36,6 +44,9 @@ internal static class Settings
 
         var hotkey = Read("CopyAsPathHotkey", "Ctrl+Shift+C");
         CopyAsPathKeys = ParseHotkey(hotkey) ?? DefaultCopyAsPath;
+
+        var toggle = Read("ToggleCursorSelectionHotkey", "Ctrl+Space");
+        ToggleCursorSelectionKeys = ParseHotkey(toggle) ?? DefaultToggleCursorSelection;
 
         Debug = Read("Debug", false);
     }

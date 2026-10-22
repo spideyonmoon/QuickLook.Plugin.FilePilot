@@ -303,7 +303,7 @@ internal static class FilePilotBridge
                 // The preview was closed from QuickLook's side; treat this Space as a fresh one.
             }
 
-            var path = SelectionReader.Read(Settings.CopyAsPathKeys, InjectedMarker);
+            var path = SelectionReader.Read(InjectedMarker, Log);
             Log("space: " + (path ?? "<no selection>"));
 
             if (path == null || Directory.Exists(path) && !Settings.FoldersInQuickLook)
@@ -350,7 +350,7 @@ internal static class FilePilotBridge
             if (generation != Volatile.Read(ref _followGeneration) || !_previewOpen || _busy)
                 return;
 
-            path = SelectionReader.Read(Settings.CopyAsPathKeys, InjectedMarker);
+            path = SelectionReader.Read(InjectedMarker, Log);
             if (path != null && path != _lastPreviewPath)
                 break;
         }

@@ -16,35 +16,80 @@ namespace QuickLook.Plugin.FilePilot;
 /// </summary>
 internal static class SelectionReader
 {
-    /// <summary>Returns the first selected path, or null if File Pilot didn't copy one.</summary>
-    public static string Read(Keys[] copyAsPathKeys, IntPtr marker)
+    /// <summary>
+    /// Returns the item to preview: the first selected path, or the item under File Pilot's cursor
+    /// when nothing is selected. Null if File Pilot didn't copy anything usable.
+    /// </summary>
+    public static string Read(IntPtr marker, Action<string> log)
     {
         var saved = Snapshot();
-        var before = GetClipboardSequenceNumber();
-
-        Input.Press(marker, copyAsPathKeys);
-
-        if (!WaitForChange(before, TimeSpan.FromMilliseconds(400)))
-            return null; // nothing copied (e.g. File Pilot is in a text box); clipboard untouched
-        var ours = GetClipboardSequenceNumber();
+        var ours = 0u; // clipboard sequence number after our last copy; 0 = clipboard untouched
 
         try
         {
-            var text = ReadText();
-            if (string.IsNullOrEmpty(text))
-                return null;
+            var first = CopyAsPath(marker, log, ref ours);
+            if (first == null || !Directory.Exists(first))
+                return first; // a selected file, or nothing usable
 
-            var first = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault()?.Trim().Trim('"');
-            return first != null && (File.Exists(first) || Directory.Exists(first)) ? first : null;
+            // A folder is ambiguous: either a folder is selected, or nothing is and File Pilot copied
+            // the folder it's showing. Select the cursor item, copy again, then undo the selection
+            // change. If the second path is inside the first, nothing was selected and the second
+            // path is the cursor item.
+            Input.Press(marker, Settings.ToggleCursorSelectionKeys);
+            var second = CopyAsPath(marker, log, ref ours);
+            Input.Press(marker, Settings.ToggleCursorSelectionKeys);
+
+            if (second != null && IsDirectChild(second, first))
+            {
+                log("nothing selected; cursor item is " + second);
+                return second;
+            }
+
+            return first;
         }
         finally
         {
             // Restore unless something else has written to the clipboard in the meantime.
-            if (GetClipboardSequenceNumber() == ours)
+            if (ours != 0 && GetClipboardSequenceNumber() == ours)
                 Restore(saved);
         }
     }
+
+    /// <summary>Presses "Copy as path" and returns the first path File Pilot copied.</summary>
+    private static string CopyAsPath(IntPtr marker, Action<string> log, ref uint ours)
+    {
+        // File Pilot occasionally fails to copy, presumably when another app still has the clipboard
+        // open; one retry covers that.
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            var before = GetClipboardSequenceNumber();
+            var started = DateTime.UtcNow;
+            Input.Press(marker, Settings.CopyAsPathKeys);
+
+            if (!WaitForChange(before, TimeSpan.FromMilliseconds(300)))
+            {
+                log($"copy attempt {attempt}: clipboard unchanged after 300 ms");
+                continue;
+            }
+
+            var text = ReadText();
+            ours = GetClipboardSequenceNumber();
+
+            var first = text?.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()?.Trim().Trim('"');
+            if (first != null && (File.Exists(first) || Directory.Exists(first)))
+                return first;
+
+            log($"copy attempt {attempt}: unusable text '{text}' after {(DateTime.UtcNow - started).TotalMilliseconds:0} ms");
+            return null; // File Pilot did copy, just not a file system path (e.g. a virtual folder)
+        }
+
+        return null;
+    }
+
+    private static bool IsDirectChild(string path, string folder) =>
+        string.Equals(Path.GetDirectoryName(path.TrimEnd('\\'))?.TrimEnd('\\'), folder.TrimEnd('\\'),
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool WaitForChange(uint before, TimeSpan timeout)
     {
@@ -63,7 +108,7 @@ internal static class SelectionReader
     {
         // The sequence number changes when File Pilot empties the clipboard, slightly before it
         // puts the text there, and the clipboard may still be held open; retry briefly.
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < 20; i++)
         {
             try
             {
